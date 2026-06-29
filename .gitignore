@@ -1,0 +1,5 @@
+*.env
+*__pycache__/
+c9745ed1d9f207416be6d2e6f8de32d1f16199bf 1.zip
+docling_models/
+hugging_face_model/

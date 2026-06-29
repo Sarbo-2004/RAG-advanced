@@ -1,68 +1,48 @@
+"""Embedding model and FAISS index loading for the Docling pipeline."""
+
 import os
+
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from src.config import EMBEDDING_MODEL, VECTORSTORE_DIR
+
+from src.config import (
+    DOCLING_VECTORSTORE_DIR,
+    EMBEDDING_DEVICE,
+    EMBEDDING_MODEL,
+    get_logger,
+)
+
+logger = get_logger(__name__)
 
 
-def get_embeddings():
+def get_embeddings() -> HuggingFaceEmbeddings:
+    """Load the local/Hub Hugging Face embedding model.
+
+    Using a local sentence-transformers model avoids cloud embedding quotas and
+    keeps query-time embeddings identical to the ones used to build the index.
     """
-    Load Hugging Face embedding model locally.
-    This avoids Gemini API embedding quota limits.
-    """
+    logger.info("Loading embedding model: %s (device=%s)", EMBEDDING_MODEL, EMBEDDING_DEVICE)
 
-    embeddings = HuggingFaceEmbeddings(
+    return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
-        model_kwargs={
-            "device": "cpu"
-        },
-        encode_kwargs={
-            "normalize_embeddings": True
-        }
+        model_kwargs={"device": EMBEDDING_DEVICE},
+        encode_kwargs={"normalize_embeddings": True},
     )
 
-    return embeddings
 
-
-def create_faiss_index(chunks):
-    """
-    Create FAISS vector store from document chunks.
-    """
-
-    embeddings = get_embeddings()
-
-    os.makedirs(VECTORSTORE_DIR, exist_ok=True)
-
-    print(f"Total chunks to embed: {len(chunks)}")
-    print("Creating FAISS index using Hugging Face embeddings...")
-
-    vectorstore = FAISS.from_documents(
-        documents=chunks,
-        embedding=embeddings
-    )
-
-    vectorstore.save_local(VECTORSTORE_DIR)
-
-    print(f"FAISS index saved at: {VECTORSTORE_DIR}")
-
-    return vectorstore
-
-
-def load_faiss_index():
-    """
-    Load existing FAISS vector store.
-    """
-
-    embeddings = get_embeddings()
-
-    if not os.path.exists(VECTORSTORE_DIR):
+def load_docling_faiss_index(embeddings: HuggingFaceEmbeddings | None = None) -> FAISS:
+    """Load the FAISS index built from Docling chunks."""
+    if not os.path.exists(DOCLING_VECTORSTORE_DIR):
         raise FileNotFoundError(
-            f"FAISS index not found at {VECTORSTORE_DIR}. Please create the index first."
+            f"Docling FAISS index not found at {DOCLING_VECTORSTORE_DIR}. "
+            "Please run build_docling_faiss_index.py first."
         )
 
-    vectorstore = FAISS.load_local(
-        VECTORSTORE_DIR,
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    embeddings = embeddings or get_embeddings()
+    logger.info("Loading FAISS index from %s", DOCLING_VECTORSTORE_DIR)
 
-    return vectorstore
+    return FAISS.load_local(
+        DOCLING_VECTORSTORE_DIR,
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )

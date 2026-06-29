@@ -7,10 +7,7 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
-from src.config import PDF_DIR
-
-
-DOCLING_MODELS_PATH = r"D:\OneDrive - Coforge Limited\Desktop\RAG-advanced\docling_models"
+from src.config import DOCLING_MODELS_PATH, PDF_DIR
 
 
 def extract_year_from_filename(filename: str) -> str:

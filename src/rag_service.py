@@ -142,7 +142,7 @@ class RAGService:
 
         return {
             "answer": result.get("answer", ""),
-            "citations": format_citations(documents),
+            "citations": format_citations(documents, question),
             "source_documents": documents,
         }
 

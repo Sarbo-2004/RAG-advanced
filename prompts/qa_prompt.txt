@@ -6,6 +6,7 @@ Grounding rules:
 - Be concise but complete. Use bullet points when they improve readability.
 - For comparison questions, make the comparison explicit.
 - Do not include citations or source markers in the answer text; the system adds them separately.
+- If the user asks a definition question such as "what is" or "what are", answer with the definition first and keep the answer focused on the definition. Do not add extra implications, dimensions, or examples unless the user asks for them.
 
 Working with tables:
 - Preserve the exact meaning of rows, columns, headers, and subheaders.

@@ -1,11 +1,4 @@
-"""LangChain retriever construction: FAISS similarity search wrapped in a
-cross-encoder reranking compressor.
-
-This builds the retriever layer:
-
-FAISS retrieves RETRIEVER_K candidate chunks.
-CrossEncoder reranker keeps the best RERANK_TOP_K chunks.
-"""
+"""LangChain retriever construction: FAISS MMR retrieval with cross-encoder reranking."""
 
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import CrossEncoderReranker
@@ -17,23 +10,17 @@ from src.vector_store import load_docling_faiss_index
 
 
 def build_reranking_retriever(vectorstore=None) -> BaseRetriever:
-    """Build a FAISS + CrossEncoder reranking retriever.
-
-    Step 1:
-        FAISS retrieves RETRIEVER_K candidate chunks.
-
-    Step 2:
-        CrossEncoder reranks those chunks using query-document relevance.
-
-    Step 3:
-        Only RERANK_TOP_K best chunks are passed to the RAG chain.
-    """
+    """Build FAISS MMR retriever + CrossEncoder reranker."""
 
     vectorstore = vectorstore or load_docling_faiss_index()
 
     base_retriever = vectorstore.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": RETRIEVER_K},
+        search_type="mmr",
+        search_kwargs={
+            "k": RETRIEVER_K,
+            "fetch_k": 50,
+            "lambda_mult": 0.45,
+        },
     )
 
     cross_encoder = HuggingFaceCrossEncoder(
@@ -45,9 +32,7 @@ def build_reranking_retriever(vectorstore=None) -> BaseRetriever:
         top_n=RERANK_TOP_K
     )
 
-    reranking_retriever = ContextualCompressionRetriever(
+    return ContextualCompressionRetriever(
         base_compressor=compressor,
         base_retriever=base_retriever,
     )
-
-    return reranking_retriever

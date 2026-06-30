@@ -1,5 +1,6 @@
 import os
 import re
+
 import fitz
 from langchain_core.documents import Document
 
@@ -22,17 +23,15 @@ def clean_text(text: str) -> str:
 
 
 def get_pdf_page_count(pdf_path: str) -> int:
-    pdf = fitz.open(pdf_path)
-    page_count = pdf.page_count
-    pdf.close()
-    return page_count
+    with fitz.open(pdf_path) as pdf:
+        return pdf.page_count
 
 
 def create_docling_converter(do_table_structure: bool = True):
     pipeline_options = PdfPipelineOptions(
         artifacts_path=DOCLING_MODELS_PATH,
         do_ocr=False,
-        do_table_structure=do_table_structure
+        do_table_structure=do_table_structure,
     )
 
     converter = DocumentConverter(
@@ -47,17 +46,17 @@ def create_docling_converter(do_table_structure: bool = True):
 
 
 def extract_page_with_pymupdf(pdf_path: str, page_number: int) -> str:
-    pdf = fitz.open(pdf_path)
-    page = pdf[page_number - 1]
-    text = page.get_text("text")
-    pdf.close()
+    with fitz.open(pdf_path) as pdf:
+        page = pdf[page_number - 1]
+        text = page.get_text("text")
+
     return clean_text(text)
 
 
 def convert_single_page_with_docling(
     pdf_path: str,
     page_number: int,
-    do_table_structure: bool = True
+    do_table_structure: bool = True,
 ) -> str:
     converter = create_docling_converter(
         do_table_structure=do_table_structure
@@ -65,7 +64,7 @@ def convert_single_page_with_docling(
 
     result = converter.convert(
         pdf_path,
-        page_range=(page_number, page_number)
+        page_range=(page_number, page_number),
     )
 
     markdown_text = result.document.export_to_markdown()
@@ -89,12 +88,13 @@ def load_single_pdf_pagewise_docling(pdf_path: str):
         page_content = ""
         parser_used = ""
         table_structure_used = False
+        extraction_status = "success"
 
         try:
             page_content = convert_single_page_with_docling(
                 pdf_path=pdf_path,
                 page_number=page_number,
-                do_table_structure=True
+                do_table_structure=True,
             )
 
             parser_used = "docling"
@@ -108,11 +108,12 @@ def load_single_pdf_pagewise_docling(pdf_path: str):
                 page_content = convert_single_page_with_docling(
                     pdf_path=pdf_path,
                     page_number=page_number,
-                    do_table_structure=False
+                    do_table_structure=False,
                 )
 
                 parser_used = "docling"
                 table_structure_used = False
+                extraction_status = "docling_without_table_structure"
 
             except Exception as docling_error:
                 print(f"Docling text mode failed on page {page_number}: {docling_error}")
@@ -121,11 +122,12 @@ def load_single_pdf_pagewise_docling(pdf_path: str):
                 try:
                     page_content = extract_page_with_pymupdf(
                         pdf_path=pdf_path,
-                        page_number=page_number
+                        page_number=page_number,
                     )
 
                     parser_used = "pymupdf_fallback"
                     table_structure_used = False
+                    extraction_status = "pymupdf_fallback"
 
                 except Exception as fallback_error:
                     print(f"PyMuPDF fallback failed on page {page_number}: {fallback_error}")
@@ -140,13 +142,15 @@ def load_single_pdf_pagewise_docling(pdf_path: str):
             "page": page_number,
             "content_type": "docling_page",
             "parser": parser_used,
-            "table_structure": table_structure_used
+            "table_structure": table_structure_used,
+            "chunk_source": "docling_pagewise",
+            "extraction_status": extraction_status,
         }
 
         documents.append(
             Document(
                 page_content=page_content,
-                metadata=metadata
+                metadata=metadata,
             )
         )
 
@@ -159,10 +163,10 @@ def load_all_pdfs_pagewise_docling(pdf_dir: str = PDF_DIR):
     if not os.path.exists(pdf_dir):
         raise FileNotFoundError(f"PDF directory not found: {pdf_dir}")
 
-    pdf_files = [
+    pdf_files = sorted(
         file for file in os.listdir(pdf_dir)
         if file.lower().endswith(".pdf")
-    ]
+    )
 
     for pdf_file in pdf_files:
         pdf_path = os.path.join(pdf_dir, pdf_file)

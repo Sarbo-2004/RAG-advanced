@@ -11,14 +11,51 @@ def remove_markdown_image_tags(text: str) -> str:
     """
     Removes Docling image placeholder tags like <!-- image -->.
     """
+
     text = re.sub(r"<!--\s*image\s*-->", "", text, flags=re.IGNORECASE)
     return text.strip()
+
+
+def clean_heading_text(heading: str) -> str:
+    """
+    Removes Markdown heading symbols from a section title.
+    """
+
+    if not heading:
+        return "Untitled Section"
+
+    return heading.strip().lstrip("#").strip()
+
+
+def is_table_heading(heading: str) -> bool:
+    """
+    Detects whether a section heading is a real table heading.
+    """
+
+    heading_clean = clean_heading_text(heading).lower()
+
+    return bool(re.search(r"\btable\s+\d+", heading_clean))
+
+
+def is_figure_heading(heading: str) -> bool:
+    """
+    Detects figure headings so they are not confused with tables.
+    """
+
+    heading_clean = clean_heading_text(heading).lower()
+
+    return bool(re.search(r"\bfigure\s+\d+", heading_clean))
 
 
 def is_markdown_table_block(block: str) -> bool:
     """
     Detects whether a block looks like a Markdown table.
+
+    We require:
+    - at least two pipe lines
+    - preferably one separator line containing --- 
     """
+
     lines = block.strip().splitlines()
 
     if len(lines) < 2:
@@ -26,12 +63,20 @@ def is_markdown_table_block(block: str) -> bool:
 
     pipe_lines = [line for line in lines if "|" in line]
 
-    return len(pipe_lines) >= 2
+    if len(pipe_lines) < 2:
+        return False
+
+    has_separator = any(
+        set(line.strip()) <= set("|-: ") and "-" in line
+        for line in pipe_lines
+    )
+
+    return has_separator or len(pipe_lines) >= 3
 
 
 def is_table_of_contents_like(text: str) -> bool:
     """
-    Detects content/contents pages that list section titles and page numbers.
+    Detects contents pages that list section titles and page numbers.
     These pages are usually not useful for RAG answers.
     """
 
@@ -44,7 +89,7 @@ def is_table_of_contents_like(text: str) -> bool:
         "summary",
         "figure",
         "table",
-        "page"
+        "page",
     ]
 
     keyword_count = sum(1 for keyword in toc_keywords if keyword in lower_text)
@@ -52,11 +97,9 @@ def is_table_of_contents_like(text: str) -> bool:
     figure_count = len(re.findall(r"\bfigure\s+\d+", lower_text))
     table_count = len(re.findall(r"\btable\s+\d+", lower_text))
 
-    # If a chunk has many figure/table references and section names, it is likely TOC.
     if keyword_count >= 4 and (figure_count >= 3 or table_count >= 2):
         return True
 
-    # Markdown TOC tables often have many pipes and page-number references.
     if "|" in text and keyword_count >= 4 and figure_count >= 2:
         return True
 
@@ -85,7 +128,7 @@ def is_low_value_section(text: str, heading: str) -> bool:
         "isbn",
         "sales, rights and licensing",
         "third-party materials",
-        "food and agriculture organization of the united nations"
+        "food and agriculture organization of the united nations",
     ]
 
     if any(phrase in lower_text for phrase in skip_phrases):
@@ -102,7 +145,7 @@ def is_low_value_section(text: str, heading: str) -> bool:
 
 def split_markdown_by_headings(markdown_text: str):
     """
-    Splits Markdown text into sections based on headings like:
+    Splits Markdown text into sections based on headings:
     # Heading
     ## Heading
     ### Heading
@@ -124,12 +167,13 @@ def split_markdown_by_headings(markdown_text: str):
                 sections.append(
                     {
                         "heading": current_heading,
-                        "content": "\n".join(current_content).strip()
+                        "content": "\n".join(current_content).strip(),
                     }
                 )
 
             current_heading = stripped_line
             current_content = [stripped_line]
+
         else:
             current_content.append(line)
 
@@ -137,7 +181,7 @@ def split_markdown_by_headings(markdown_text: str):
         sections.append(
             {
                 "heading": current_heading,
-                "content": "\n".join(current_content).strip()
+                "content": "\n".join(current_content).strip(),
             }
         )
 
@@ -152,10 +196,33 @@ def split_large_text(text: str):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", ". ", " ", ""]
+        separators=["\n\n", "\n", ". ", " ", ""],
     )
 
     return splitter.split_text(text)
+
+
+def build_contextual_chunk_text(content: str, metadata: dict) -> str:
+    """
+    Adds lightweight context prefix before the actual chunk.
+    This improves retrieval and reranking quality.
+    """
+
+    source = metadata.get("source", "Unknown source")
+    year = metadata.get("year", "Unknown year")
+    page = metadata.get("page", "Unknown page")
+    section = clean_heading_text(metadata.get("section", "Untitled Section"))
+    content_type = metadata.get("content_type", "unknown")
+
+    prefix = (
+        f"Document: {source}\n"
+        f"Year: {year}\n"
+        f"Page: {page}\n"
+        f"Section: {section}\n"
+        f"Content Type: {content_type}\n\n"
+    )
+
+    return prefix + content.strip()
 
 
 def split_docling_documents(docling_documents):
@@ -163,12 +230,13 @@ def split_docling_documents(docling_documents):
     Converts Docling page-level Markdown documents into RAG-friendly chunks.
 
     Strategy:
-    - Remove image placeholders
-    - Skip cover/citation/contents chunks
-    - Split Markdown by headings
-    - Keep Markdown tables as complete chunks where useful
-    - Split only large text sections
-    - Preserve metadata
+    - Remove image placeholders.
+    - Skip cover/citation/contents chunks.
+    - Split Markdown by headings.
+    - Preserve table sections completely.
+    - Preserve Markdown tables completely.
+    - Split only large normal text sections.
+    - Add rich metadata.
     """
 
     final_chunks = []
@@ -195,38 +263,81 @@ def split_docling_documents(docling_documents):
             metadata["chunk_source"] = "docling_markdown"
             metadata["chunk_id"] = chunk_counter
 
-            if is_markdown_table_block(content):
+            table_heading = is_table_heading(heading)
+            markdown_table = is_markdown_table_block(content)
+            figure_heading = is_figure_heading(heading)
+
+            # --------------------------------------------------
+            # Preserve actual table sections completely
+            # --------------------------------------------------
+            if table_heading or (markdown_table and not figure_heading):
                 metadata["content_type"] = "docling_table_markdown"
+                metadata["chunk_id"] = chunk_counter
+
+                chunk_text = build_contextual_chunk_text(
+                    content=content,
+                    metadata=metadata,
+                )
 
                 final_chunks.append(
                     Document(
-                        page_content=content,
-                        metadata=metadata
+                        page_content=chunk_text,
+                        metadata=metadata,
                     )
                 )
 
                 chunk_counter += 1
+                continue
 
-            else:
-                small_chunks = split_large_text(content)
+            # --------------------------------------------------
+            # Preserve figure sections as figure text
+            # --------------------------------------------------
+            if figure_heading:
+                metadata["content_type"] = "docling_figure_text"
+                metadata["chunk_id"] = chunk_counter
 
-                for small_chunk in small_chunks:
-                    small_chunk = remove_markdown_image_tags(small_chunk)
+                chunk_text = build_contextual_chunk_text(
+                    content=content,
+                    metadata=metadata,
+                )
 
-                    if is_low_value_section(small_chunk, heading):
-                        continue
-
-                    chunk_metadata = metadata.copy()
-                    chunk_metadata["content_type"] = "docling_text"
-                    chunk_metadata["chunk_id"] = chunk_counter
-
-                    final_chunks.append(
-                        Document(
-                            page_content=small_chunk,
-                            metadata=chunk_metadata
-                        )
+                final_chunks.append(
+                    Document(
+                        page_content=chunk_text,
+                        metadata=metadata,
                     )
+                )
 
-                    chunk_counter += 1
+                chunk_counter += 1
+                continue
+
+            # --------------------------------------------------
+            # Normal text section splitting
+            # --------------------------------------------------
+            small_chunks = split_large_text(content)
+
+            for small_chunk in small_chunks:
+                small_chunk = remove_markdown_image_tags(small_chunk)
+
+                if is_low_value_section(small_chunk, heading):
+                    continue
+
+                chunk_metadata = metadata.copy()
+                chunk_metadata["content_type"] = "docling_text"
+                chunk_metadata["chunk_id"] = chunk_counter
+
+                chunk_text = build_contextual_chunk_text(
+                    content=small_chunk,
+                    metadata=chunk_metadata,
+                )
+
+                final_chunks.append(
+                    Document(
+                        page_content=chunk_text,
+                        metadata=chunk_metadata,
+                    )
+                )
+
+                chunk_counter += 1
 
     return final_chunks

@@ -6,3 +6,4 @@ hugging_face_model/
 .vscode/
 .claude/
 .pytest_cache/
+docling_models.zip

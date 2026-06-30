@@ -1,7 +1,4 @@
-"""Streamlit conversational RAG chatbot over the FAO reports.
-
-UI layer only: all retrieval, memory, and generation lives in src.rag_service.
-"""
+"""Professional Streamlit UI for FAO RAG Assistant."""
 
 import uuid
 
@@ -17,167 +14,179 @@ from src.config import (
 from src.rag_service import RAGService
 
 
+# --------------------------------------------------
+# Constants
+# --------------------------------------------------
 ASSISTANT_AVATAR = "📘"
 USER_AVATAR = "🧑‍💼"
 
-
-CONTENT_TYPE_BADGES = {
-    "docling_table_markdown": ("Table", "📊"),
-    "docling_table": ("Table", "📊"),
-    "docling_text": ("Text", "📄"),
-    "table": ("Table", "📊"),
-    "text": ("Text", "📄"),
+CONTENT_TYPE_LABELS = {
+    "docling_table_markdown": "Table",
+    "docling_table": "Table",
+    "docling_text": "Text",
+    "table": "Table",
+    "text": "Text",
 }
-
 
 EXAMPLE_QUESTIONS = [
     "What is true cost accounting?",
     "What are hidden costs in agrifood systems?",
-    "Are hidden costs higher in low-income countries?",
-    "According to Table 2 in the 2021 report, what percentage of the world population was unable to afford a healthy diet in 2019?",
-    "According to Table 5 in the 2021 report, what are the three main ways to manage agrifood systems risk and uncertainty?",
-    "According to Table 3 in the 2025 report, how do monitoring requirements differ between land management and land-use change interventions?",
+    "What percentage of the world population was unable to afford a healthy diet in 2019?",
+    "What are the three main ways to manage agrifood systems risk and uncertainty?",
+    "How do monitoring requirements differ between land management and land-use change interventions?",
+]
+
+FOLLOW_UP_TESTS = [
+    {
+        "first": "What is true cost accounting?",
+        "follow": "Why is it useful?",
+    },
+    {
+        "first": "What are hidden costs in agrifood systems?",
+        "follow": "Are they higher in low-income countries?",
+    },
+    {
+        "first": "What percentage of the world population was unable to afford a healthy diet in 2019?",
+        "follow": "How many people does that represent?",
+    },
+    {
+        "first": "What are the three main ways to manage agrifood systems risk and uncertainty?",
+        "follow": "Which one is linked with more predictable shocks?",
+    },
+    {
+        "first": "How do monitoring requirements differ between land management and land-use change interventions?",
+        "follow": "Which one can use remote sensing data?",
+    },
 ]
 
 
 # --------------------------------------------------
-# Page configuration
+# Page Config
 # --------------------------------------------------
 st.set_page_config(
     page_title="FAO RAG Assistant",
     page_icon="📘",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
 
 # --------------------------------------------------
-# Theme-safe styling
+# Styling
 # --------------------------------------------------
 st.markdown(
     """
     <style>
-        :root {
-            --accent: #10b981;
-            --accent-2: #3b82f6;
-        }
-
         .block-container {
-            padding-top: 2.2rem;
-            max-width: 1100px;
-        }
-
-        .app-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            margin-bottom: 0.25rem;
+            max-width: 920px;
+            padding-top: 2rem;
+            padding-bottom: 3rem;
         }
 
         .app-title {
-            font-size: 2rem;
+            font-size: 1.75rem;
             font-weight: 800;
-            line-height: 1.1;
-            background: linear-gradient(90deg, var(--accent), var(--accent-2));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            margin-bottom: 0.15rem;
         }
 
         .app-subtitle {
-            font-size: 0.95rem;
-            opacity: 0.7;
-            margin: 0.3rem 0 1.2rem;
+            font-size: 0.92rem;
+            color: #9ca3af;
+            margin-bottom: 1.25rem;
         }
 
-        .status-pill {
+        .status-row {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.25rem;
+        }
+
+        .status-chip {
             display: inline-flex;
             align-items: center;
-            gap: 0.45rem;
-            padding: 0.32rem 0.7rem;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
             border-radius: 999px;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             font-weight: 600;
-            white-space: nowrap;
+            border: 1px solid rgba(127,127,127,0.25);
+            background: rgba(127,127,127,0.10);
         }
 
-        .status-dot {
+        .green-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: var(--accent);
-            box-shadow: 0 0 0 0 rgba(16,185,129,0.6);
-            animation: pulse 2s infinite;
+            background: #10b981;
         }
 
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(16,185,129,0.5);
-            }
-            70% {
-                box-shadow: 0 0 0 7px rgba(16,185,129,0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(16,185,129,0);
-            }
+        .welcome-box {
+            border: 1px solid rgba(127,127,127,0.20);
+            background: rgba(127,127,127,0.05);
+            border-radius: 14px;
+            padding: 1rem 1.1rem;
+            margin-bottom: 1rem;
         }
 
-        .badge {
-            display: inline-block;
-            padding: 0.12rem 0.55rem;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            margin-right: 0.35rem;
-            background: rgba(127,127,127,0.16);
-            border: 1px solid rgba(127,127,127,0.22);
+        .welcome-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.35rem;
         }
 
-        .badge-accent {
-            background: rgba(16, 185, 129, 0.14);
-            border-color: rgba(16, 185, 129, 0.3);
-        }
-
-        div[data-testid="stSidebar"] .stButton > button {
-            text-align: left;
+        div[data-testid="stButton"] button {
             border-radius: 10px;
-            border: 1px solid rgba(127,127,127,0.2);
-            transition: border-color 0.15s ease, transform 0.05s ease;
+            min-height: 2.6rem;
+            font-size: 0.9rem;
         }
 
-        div[data-testid="stSidebar"] .stButton > button:hover {
-            border-color: var(--accent);
+        div[data-testid="stChatMessage"] {
+            padding: 0.45rem 0;
         }
 
-        .stButton > button:active {
-            transform: translateY(1px);
+        div[data-testid="stExpander"] {
+            border-radius: 12px;
         }
 
-        .source-section {
+        .source-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 0.15rem;
+        }
+
+        .source-meta {
             font-size: 0.82rem;
             opacity: 0.75;
-            margin: 0.1rem 0 0.4rem;
+            margin-bottom: 0.4rem;
         }
 
-        [data-testid="stMarkdownContainer"] table {
-            display: block;
-            overflow-x: auto;
-            white-space: nowrap;
-            font-size: 0.82rem;
-            border-collapse: collapse;
+        .input-panel {
+            border: 1px solid rgba(127,127,127,0.22);
+            background: rgba(127,127,127,0.06);
+            border-radius: 14px;
+            padding: 0.75rem;
+            margin-top: 1.25rem;
         }
 
-        [data-testid="stMarkdownContainer"] th,
-        [data-testid="stMarkdownContainer"] td {
-            border: 1px solid rgba(127,127,127,0.25);
-            padding: 0.3rem 0.55rem;
+        div[data-testid="stTextInput"] input {
+            min-height: 46px;
+            border-radius: 10px;
+            font-size: 0.95rem;
         }
 
-        [data-testid="stMarkdownContainer"] thead th {
-            background: rgba(16, 185, 129, 0.12);
+        .stFormSubmitButton button {
+            min-height: 46px;
+            border-radius: 10px;
+            font-weight: 700;
+        }
+
+        pre {
+            max-height: 240px !important;
+            overflow-y: auto !important;
+            white-space: pre-wrap !important;
+            word-break: break-word !important;
+            font-size: 0.78rem !important;
         }
 
         footer {
@@ -194,17 +203,16 @@ st.markdown(
 
 
 # --------------------------------------------------
-# Cached RAG service
+# Cached RAG Service
 # --------------------------------------------------
 @st.cache_resource(show_spinner="Loading models and FAISS index...")
 def get_rag_service() -> RAGService:
-    """Build the RAG service once and reuse it across reruns."""
     validate_runtime_config()
     return RAGService()
 
 
 # --------------------------------------------------
-# Session state
+# Session State
 # --------------------------------------------------
 if "session_id" not in st.session_state:
     st.session_state.session_id = uuid.uuid4().hex
@@ -217,95 +225,69 @@ if "pending_question" not in st.session_state:
 
 
 # --------------------------------------------------
-# Helper functions
+# Helper Functions
 # --------------------------------------------------
-def _looks_like_markdown_table(text: str) -> bool:
-    """Heuristic: at least two pipe rows and a separator row."""
-    pipe_lines = [
-        line for line in text.splitlines()
-        if line.count("|") >= 2
-    ]
-
-    has_separator = any(
-        set(line.strip()) <= set("|-: ") and "-" in line
-        for line in pipe_lines
-    )
-
-    return len(pipe_lines) >= 2 and has_separator
+def set_pending_question(question: str):
+    st.session_state.pending_question = question
 
 
 def render_sources(docs, citations):
-    """Render a polished source panel for assistant responses."""
-
     if not docs:
         return
 
-    with st.expander(f"📚 Sources & citations ({len(docs)})", expanded=False):
+    with st.expander(f"Sources and citations ({len(citations)})", expanded=False):
         if citations:
             st.markdown("**Citations**")
             for citation in citations:
                 st.markdown(f"- {citation}")
 
-            st.divider()
-
+        st.divider()
         st.markdown("**Retrieved passages**")
 
         for index, doc in enumerate(docs, start=1):
             metadata = doc.metadata
 
             source = metadata.get("source", "Unknown source")
-            page = metadata.get("page", "?")
+            page = metadata.get("page", "Unknown page")
             year = metadata.get("year", "")
             section = metadata.get("section", "")
             content_type = metadata.get("content_type", "text")
 
-            label, icon = CONTENT_TYPE_BADGES.get(content_type, ("Text", "📄"))
+            content_label = CONTENT_TYPE_LABELS.get(content_type, "Text")
 
-            header = (
-                f"**{index}. {icon} {source}** "
-                f"<span class='badge badge-accent'>Page {page}</span>"
-                f"<span class='badge'>{label}</span>"
+            st.markdown(
+                f"""
+                <div class="source-title">{index}. {source}</div>
+                <div class="source-meta">
+                    Page {page}
+                    {f" · {year}" if year else ""}
+                    · {content_label}
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-
-            if year:
-                header += f"<span class='badge'>{year}</span>"
-
-            st.markdown(header, unsafe_allow_html=True)
 
             if section and not is_generic_section(section):
                 clean_section = clean_section_for_citation(section)
-                st.markdown(
-                    f"<div class='source-section'>§ {clean_section}</div>",
-                    unsafe_allow_html=True,
-                )
+                st.caption(f"Section: {clean_section}")
 
-            content = doc.page_content
+            content = doc.page_content.strip()
+            preview = content[:1200]
 
-            with st.container(border=True):
-                if _looks_like_markdown_table(content):
-                    st.markdown(content, unsafe_allow_html=False)
-                else:
-                    snippet = content[:1100].strip()
+            if len(content) > 1200:
+                preview += " ..."
 
-                    if len(content) > 1100:
-                        snippet += " ..."
-
-                    st.markdown(snippet)
+            st.code(preview, language="text")
 
 
-def answer_token_stream(service, question, session_id, captured):
-    """Yield streamed answer tokens while capturing retrieved context."""
-
+def stream_answer(service, question, session_id, captured):
     notice = captured["notice"]
     started = False
 
     for chunk in service.stream(question, session_id):
         if chunk.get("context"):
             captured["docs"] = chunk["context"]
-            notice.markdown(
-                "✍️ &nbsp;*Generating grounded answer...*",
-                unsafe_allow_html=True,
-            )
+            notice.info("Generating grounded answer...")
 
         token = chunk.get("answer")
 
@@ -321,54 +303,44 @@ def answer_token_stream(service, question, session_id, captured):
 # Sidebar
 # --------------------------------------------------
 with st.sidebar:
-    st.markdown("### 📘 FAO RAG Assistant")
-    st.caption("Conversational retrieval over FAO reports, 2021–2025.")
+    st.markdown("## FAO RAG Assistant")
+    st.caption("Conversational document assistant for FAO reports, 2021–2025.")
 
     st.divider()
 
-    with st.expander("⚙️ Pipeline & settings", expanded=True):
-        st.markdown(
-            f"""
-            <span class='badge badge-accent'>Gemini</span> {LLM_MODEL}<br>
-            <span class='badge'>Vector store</span> FAISS<br>
-            <span class='badge'>Embeddings</span> MiniLM local<br>
-            <span class='badge'>Reranker</span> Cross-encoder local
-            """,
-            unsafe_allow_html=True,
-        )
+    st.markdown("### Pipeline")
+    st.write(f"**LLM:** {LLM_MODEL}")
+    st.write("**Vector store:** FAISS")
+    st.write("**Embeddings:** Local MiniLM")
+    st.write("**Reranker:** Local Cross-Encoder")
 
-        col_a, col_b = st.columns(2)
-        col_a.metric("Retrieve k", RETRIEVER_K)
-        col_b.metric("Rerank top-k", RERANK_TOP_K)
-
-    with st.expander("ℹ️ How it works", expanded=False):
-        st.markdown(
-            """
-            1. **Reformulate** the question using chat history.
-            2. **Retrieve** candidate passages from FAISS.
-            3. **Rerank** them with a local cross-encoder.
-            4. **Generate** a grounded answer with citations.
-            """
-        )
+    col_a, col_b = st.columns(2)
+    col_a.metric("Retrieve", RETRIEVER_K)
+    col_b.metric("Rerank", RERANK_TOP_K)
 
     st.divider()
 
-    st.markdown("#### 💡 Try an example")
-
-    for i, question in enumerate(EXAMPLE_QUESTIONS):
-        if st.button(question, use_container_width=True, key=f"side_q_{i}"):
-            st.session_state.pending_question = question
+    st.markdown("### Example questions")
+    for index, question in enumerate(EXAMPLE_QUESTIONS):
+        if st.button(question, key=f"example_{index}", use_container_width=True):
+            set_pending_question(question)
 
     st.divider()
 
-    turns = sum(
-        1 for message in st.session_state.messages
-        if message["role"] == "user"
-    )
+    st.markdown("### Follow-up tests")
+    for index, pair in enumerate(FOLLOW_UP_TESTS):
+        with st.expander(f"Test {index + 1}"):
+            st.markdown("**First ask:**")
+            st.code(pair["first"], language="text")
+            st.markdown("**Then ask:**")
+            st.code(pair["follow"], language="text")
 
-    st.caption(f"💬 {turns} question(s) this session")
+    st.divider()
 
-    if st.button("🧹 New conversation", use_container_width=True, type="primary"):
+    turns = sum(1 for message in st.session_state.messages if message["role"] == "user")
+    st.caption(f"{turns} question(s) in this session")
+
+    if st.button("New conversation", type="primary", use_container_width=True):
         try:
             get_rag_service().reset_session(st.session_state.session_id)
         except Exception:
@@ -383,17 +355,19 @@ with st.sidebar:
 # --------------------------------------------------
 # Header
 # --------------------------------------------------
+st.markdown('<div class="app-title">📘 FAO RAG Assistant</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="app-subtitle">Ask citation-backed questions from the FAO State of Food and Agriculture reports, 2021–2025.</div>',
+    unsafe_allow_html=True,
+)
+
 st.markdown(
     f"""
-    <div class="app-header">
-        <div>
-            <div class="app-title">📘 FAO PDF RAG Assistant</div>
-        </div>
-        <div class="status-pill"><span class="status-dot"></span> {LLM_MODEL}</div>
-    </div>
-    <div class="app-subtitle">
-        Ask grounded, citation-backed questions about the FAO “State of Food and
-        Agriculture” reports from 2021 to 2025.
+    <div class="status-row">
+        <div class="status-chip"><span class="green-dot"></span>{LLM_MODEL}</div>
+        <div class="status-chip">FAISS</div>
+        <div class="status-chip">Local embeddings</div>
+        <div class="status-chip">Cross-encoder reranking</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -401,34 +375,30 @@ st.markdown(
 
 
 # --------------------------------------------------
-# Empty state
+# Empty State
 # --------------------------------------------------
 if not st.session_state.messages:
-    with st.container(border=True):
-        st.markdown("#### 👋 Welcome")
-        st.markdown(
-            """
-            Ask conceptual, table-specific, or year-specific questions and follow up naturally.
+    st.markdown(
+        """
+        <div class="welcome-box">
+            <div class="welcome-title">Start a conversation</div>
+            Ask about concepts, tables, policy comparisons, or follow up naturally.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-            The assistant remembers the conversation and grounds every answer in the source PDFs.
-            """
-        )
+    col_1, col_2 = st.columns(2)
 
-        st.markdown("**Get started:**")
+    for index, question in enumerate(EXAMPLE_QUESTIONS[:4]):
+        target_col = col_1 if index % 2 == 0 else col_2
 
-        grid = st.columns(2)
-
-        for i, question in enumerate(EXAMPLE_QUESTIONS[:4]):
-            if grid[i % 2].button(
-                question,
-                use_container_width=True,
-                key=f"welcome_q_{i}",
-            ):
-                st.session_state.pending_question = question
+        if target_col.button(question, key=f"quick_{index}", use_container_width=True):
+            set_pending_question(question)
 
 
 # --------------------------------------------------
-# Render previous chat history
+# Render Chat History
 # --------------------------------------------------
 for message in st.session_state.messages:
     avatar = USER_AVATAR if message["role"] == "user" else ASSISTANT_AVATAR
@@ -444,16 +414,33 @@ for message in st.session_state.messages:
 
 
 # --------------------------------------------------
-# Resolve input
+# Input Panel
 # --------------------------------------------------
-typed_question = st.chat_input("Ask a question about the FAO reports...")
+with st.container(border=True):
+    with st.form("chat_form", clear_on_submit=True):
+        input_col, send_col = st.columns([10, 1.2])
 
-user_question = typed_question or st.session_state.pending_question
+        with input_col:
+            typed_question = st.text_input(
+                label="Question",
+                label_visibility="collapsed",
+                placeholder="Message the FAO RAG assistant...",
+            )
+
+        with send_col:
+            submitted = st.form_submit_button("Send", use_container_width=True)
+
+
+if submitted and typed_question:
+    user_question = typed_question
+else:
+    user_question = st.session_state.pending_question
+
 st.session_state.pending_question = None
 
 
 # --------------------------------------------------
-# Handle new question
+# Handle New Message
 # --------------------------------------------------
 if user_question:
     st.session_state.messages.append(
@@ -471,10 +458,7 @@ if user_question:
             service = get_rag_service()
 
             notice = st.empty()
-            notice.markdown(
-                "🔍 &nbsp;*Retrieving and reranking relevant passages...*",
-                unsafe_allow_html=True,
-            )
+            notice.info("Retrieving and reranking relevant passages...")
 
             captured = {
                 "notice": notice,
@@ -482,11 +466,11 @@ if user_question:
             }
 
             answer = st.write_stream(
-                answer_token_stream(
-                    service,
-                    user_question,
-                    st.session_state.session_id,
-                    captured,
+                stream_answer(
+                    service=service,
+                    question=user_question,
+                    session_id=st.session_state.session_id,
+                    captured=captured,
                 )
             )
 
@@ -504,9 +488,11 @@ if user_question:
                 }
             )
 
+            st.rerun()
+
         except Exception as error:
             error_message = (
-                "⚠️ Something went wrong while generating the answer. "
+                "Something went wrong while generating the answer. "
                 "Please check the FAISS index, API key, or local model paths."
             )
 
@@ -523,3 +509,5 @@ if user_question:
                     "sources": [],
                 }
             )
+
+            st.rerun()

@@ -9,19 +9,15 @@ from src.config import (
     DOCLING_VECTORSTORE_DIR,
     EMBEDDING_DEVICE,
     EMBEDDING_MODEL,
-    get_logger,
 )
-
-logger = get_logger(__name__)
 
 
 def get_embeddings() -> HuggingFaceEmbeddings:
-    """Load the local/Hub Hugging Face embedding model.
+    """Load the local Hugging Face embedding model.
 
-    Using a local sentence-transformers model avoids cloud embedding quotas and
-    keeps query-time embeddings identical to the ones used to build the index.
+    This uses the same local sentence-transformers model that was used
+    while building the FAISS index.
     """
-    logger.info("Loading embedding model: %s (device=%s)", EMBEDDING_MODEL, EMBEDDING_DEVICE)
 
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
@@ -30,8 +26,11 @@ def get_embeddings() -> HuggingFaceEmbeddings:
     )
 
 
-def load_docling_faiss_index(embeddings: HuggingFaceEmbeddings | None = None) -> FAISS:
+def load_docling_faiss_index(
+    embeddings: HuggingFaceEmbeddings | None = None
+) -> FAISS:
     """Load the FAISS index built from Docling chunks."""
+
     if not os.path.exists(DOCLING_VECTORSTORE_DIR):
         raise FileNotFoundError(
             f"Docling FAISS index not found at {DOCLING_VECTORSTORE_DIR}. "
@@ -39,7 +38,6 @@ def load_docling_faiss_index(embeddings: HuggingFaceEmbeddings | None = None) ->
         )
 
     embeddings = embeddings or get_embeddings()
-    logger.info("Loading FAISS index from %s", DOCLING_VECTORSTORE_DIR)
 
     return FAISS.load_local(
         DOCLING_VECTORSTORE_DIR,
